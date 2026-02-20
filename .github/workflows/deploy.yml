@@ -8,7 +8,7 @@ env:
   AWS_REGION: ap-south-2
   AWS_DEFAULT_REGION: ap-south-2
   DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/flask-app
-  TF_STATE_BUCKET: yogeshtiwari-tf-state
+  TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
 
 jobs:
   test:
@@ -31,7 +31,7 @@ jobs:
       run:
         working-directory: terraform
     steps:
-      - uses: actions/checkout@v4 # Fixed: Added 'actions/' prefix
+      - uses: actions/checkout@v4
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
       - name: Configure AWS credentials

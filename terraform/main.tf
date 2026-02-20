@@ -6,7 +6,7 @@ terraform {
     }
   }
   backend "s3" {
-    bucket = "yogeshtiwari-tf-state" # Ensure this matches your manual bucket name
+    bucket = "yogeshtiwari-tf-state" # Ensure this matches your ACTUAL bucket name
     key    = "k8s-cluster/terraform.tfstate"
     region = "ap-south-2"
   }
@@ -16,7 +16,7 @@ provider "aws" {
   region = var.aws_region
 }
 
-# Dynamic AMI Lookup
+# Dynamic AMI Lookup - No more hardcoded IDs
 data "aws_ami" "ubuntu" {
   most_recent = true
   owners      = ["099720109477"] # Canonical
@@ -97,7 +97,7 @@ resource "aws_security_group" "k8s" {
   }
 }
 
-# ─── IAM ───────────────────────────────────────────────────────────
+# ─── IAM Permissions ───────────────────────────────────────────────
 resource "aws_iam_role" "k8s_node" {
   name = "k8s-node-role"
   assume_role_policy = jsonencode({
@@ -120,7 +120,7 @@ resource "aws_iam_instance_profile" "k8s_node" {
   role = aws_iam_role.k8s_node.name
 }
 
-# ─── Compute ───────────────────────────────────────────────────────
+# ─── Master Node ────────────────────────────────────────────────────
 resource "aws_instance" "master" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type_master
@@ -129,11 +129,17 @@ resource "aws_instance" "master" {
   vpc_security_group_ids = [aws_security_group.k8s.id]
   iam_instance_profile   = aws_iam_instance_profile.k8s_node.name
   user_data              = file("userdata/master.sh")
-  tags                   = { Name = "k8s-master" }
+
+  root_block_device {
+    volume_size = 20
+    volume_type = "gp3"
+  }
+  tags = { Name = "k8s-master" }
 }
 
+# ─── Worker Nodes ───────────────────────────────────────────────────
 resource "aws_instance" "workers" {
-  count                  = 3
+  count                  = 2 # Stay within Free Tier
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type_worker
   key_name               = var.key_name
@@ -141,5 +147,10 @@ resource "aws_instance" "workers" {
   vpc_security_group_ids = [aws_security_group.k8s.id]
   iam_instance_profile   = aws_iam_instance_profile.k8s_node.name
   user_data              = file("userdata/worker.sh")
-  tags                   = { Name = "k8s-worker-${count.index + 1}" }
+
+  root_block_device {
+    volume_size = 15
+    volume_type = "gp3"
+  }
+  tags = { Name = "k8s-worker-${count.index + 1}" }
 }
