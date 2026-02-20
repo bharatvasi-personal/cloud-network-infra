@@ -6,7 +6,7 @@ terraform {
     }
   }
   backend "s3" {
-    bucket = "yogeshtiwari-tf-state"   # CHANGE THIS to your manual bucket name
+    bucket = "yogeshtiwari-tf-state" # Ensure this matches your manual bucket name
     key    = "k8s-cluster/terraform.tfstate"
     region = "ap-south-2"
   }
@@ -14,6 +14,16 @@ terraform {
 
 provider "aws" {
   region = var.aws_region
+}
+
+# Dynamic AMI Lookup
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"] # Canonical
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
 }
 
 # ─── VPC & Networking ──────────────────────────────────────────────
@@ -52,40 +62,33 @@ resource "aws_route_table_association" "public" {
 
 # ─── Security Group ─────────────────────────────────────────────────
 resource "aws_security_group" "k8s" {
-  name        = "k8s-sg"
-  vpc_id      = aws_vpc.main.id
+  name   = "k8s-sg"
+  vpc_id = aws_vpc.main.id
 
   ingress {
-    description = "SSH"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
   ingress {
-    description = "K8s API"
     from_port   = 6443
     to_port     = 6443
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # Open for GitHub Actions to connect
+    cidr_blocks = ["0.0.0.0/0"]
   }
-
   ingress {
-    description = "NodePort"
     from_port   = 30000
     to_port     = 32767
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
   ingress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["10.0.0.0/16"]
   }
-
   egress {
     from_port   = 0
     to_port     = 0
@@ -94,7 +97,7 @@ resource "aws_security_group" "k8s" {
   }
 }
 
-# ─── IAM Permissions ───────────────────────────────────────────────
+# ─── IAM ───────────────────────────────────────────────────────────
 resource "aws_iam_role" "k8s_node" {
   name = "k8s-node-role"
   assume_role_policy = jsonencode({
@@ -117,37 +120,26 @@ resource "aws_iam_instance_profile" "k8s_node" {
   role = aws_iam_role.k8s_node.name
 }
 
-# ─── Master Node ────────────────────────────────────────────────────
+# ─── Compute ───────────────────────────────────────────────────────
 resource "aws_instance" "master" {
-  ami                    = var.ami_id
+  ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type_master
   key_name               = var.key_name
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.k8s.id]
   iam_instance_profile   = aws_iam_instance_profile.k8s_node.name
   user_data              = file("userdata/master.sh")
-
-  root_block_device {
-    volume_size = 20
-    volume_type = "gp3"
-  }
-  tags = { Name = "k8s-master" }
+  tags                   = { Name = "k8s-master" }
 }
 
-# ─── Worker Nodes ───────────────────────────────────────────────────
 resource "aws_instance" "workers" {
   count                  = 3
-  ami                    = var.ami_id
+  ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type_worker
   key_name               = var.key_name
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.k8s.id]
   iam_instance_profile   = aws_iam_instance_profile.k8s_node.name
   user_data              = file("userdata/worker.sh")
-
-  root_block_device {
-    volume_size = 15
-    volume_type = "gp3"
-  }
-  tags = { Name = "k8s-worker-${count.index + 1}" }
+  tags                   = { Name = "k8s-worker-${count.index + 1}" }
 }
