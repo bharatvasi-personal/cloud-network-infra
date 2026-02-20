@@ -4,7 +4,7 @@ on:
   workflow_dispatch: # This enables the manual "Run" button
 
 env:
-  AWS_REGION: us-east-1
+  AWS_REGION: ap-south-2
   TF_STATE_BUCKET: "yogeshtiwari-tf-state" # Ensure this matches your bucket name
 
 jobs:

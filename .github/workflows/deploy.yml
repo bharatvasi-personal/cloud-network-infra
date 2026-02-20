@@ -5,9 +5,9 @@ on:
     branches: [main]
 
 env:
-  AWS_REGION: us-east-1
+  AWS_REGION: ap-south-2
   DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/flask-app
-  TF_STATE_BUCKET: "your-actual-bucket-name-here" # Change this!
+  TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }} # Change this!
 
 jobs:
   test:
