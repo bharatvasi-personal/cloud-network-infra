@@ -6,8 +6,9 @@ on:
 
 env:
   AWS_REGION: ap-south-2
+  AWS_DEFAULT_REGION: ap-south-2
   DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/flask-app
-  TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }} # Change this!
+  TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
 
 jobs:
   test:
@@ -30,7 +31,7 @@ jobs:
       run:
         working-directory: terraform
     steps:
-      - uses: actions/checkout@v4
+      - uses: checkout@v4
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
       - name: Configure AWS credentials
@@ -81,17 +82,20 @@ jobs:
           echo "MASTER_IP=$(terraform output -raw master_public_ip)" >> $GITHUB_ENV
 
       - name: Wait for K8s Bootstrap
-        run: sleep 300 # Wait 5 mins for kubeadm to finish on the EC2s
+        run: sleep 300 
 
       - name: Setup kubeconfig via SSH
         run: |
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > k8s.pem
           chmod 600 k8s.pem
+          # Added -o StrictHostKeyChecking=no to prevent hanging
           scp -o StrictHostKeyChecking=no -i k8s.pem ubuntu@${{ env.MASTER_IP }}:/home/ubuntu/.kube/config ./kubeconfig
-          sed -i "s|https://10.0.1.*:6443|https://${{ env.MASTER_IP }}:6443|g" ./kubeconfig
+          sed -i "s|https://10\.[0-9.]*:6443|https://${{ env.MASTER_IP }}:6443|g" ./kubeconfig
 
       - name: Update Image & Deploy
         run: |
           export KUBECONFIG=./kubeconfig
+          # Using github.sha to ensure the exact built image is deployed
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           sed -i "s|YOUR_DOCKERHUB/flask-app:latest|${{ secrets.DOCKERHUB_USERNAME }}/flask-app:${{ github.sha }}|g" k8s/deployment.yaml
           kubectl apply -f k8s/deployment.yaml
